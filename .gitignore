@@ -1,0 +1,67 @@
+# Keep training checkpoints local. These contain multi-gigabyte model and
+# optimizer files that cannot be pushed through normal GitHub Git storage.
+**/checkpoints/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+.netrc
+.pypirc
+.ssh/
+*.pem
+*.key
+
+# Python-generated files and test/tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+
+# Local environments and packaging output
+.venv/
+venv/
+ENV/
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.DS_Store
+*.swp
+
+# Common local runtime state
+*.lock
+.tmp/
+*ports
+
+# Training and experiment runtime artifacts
+*.log
+logs/
+outputs/
+**/wandb/
+
+# Downloaded assets and reproducible runtime output
+/models/
+/data/
+/cache/
+/tmp/
+/reports/
+**/hs_err_pid*.log
+*.orig
+*.bak
+agent_system/environments/env_package/webshop/webshop/data/
+agent_system/environments/env_package/webshop/webshop/search_engine/indexes*/
+agent_system/environments/env_package/webshop/webshop/search_engine/resources*/
+**/user_session_logs/

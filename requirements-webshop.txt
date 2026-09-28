@@ -1,0 +1,9 @@
+# Use Python 3.10. Install WebShop assets with its bundled setup.sh first.
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
+vllm==0.8.3
+transformers==4.51.1
+ray[default]==2.50.0
+tensordict==0.10.0
+-e .

@@ -1,0 +1,9 @@
+# ALFWorld/Search backend versions from the existing training environment.
+torch==2.8.0
+torchvision==0.23.0
+torchaudio==2.8.0
+vllm==0.11.0
+transformers==4.57.3
+ray[default]==2.50.0
+tensordict==0.10.0
+-e .[alfworld,search]

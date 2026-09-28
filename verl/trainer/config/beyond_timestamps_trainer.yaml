@@ -1,0 +1,111 @@
+defaults:
+  - ppo_trainer
+  - _self_
+
+# BeyondTimestamps owns these method settings. Launchers override values with
+# normal Hydra assignments (without `+algorithm.*`) so missing or misspelled
+# fields fail fast instead of silently creating an ad-hoc configuration tree.
+algorithm:
+  # Controlled ablation: A/B/C/D/E.  Empty keeps the configured defaults.
+  ablation_mode: E
+  sdar_aux:
+    enabled: false
+    coef: 0.01
+    gate_beta: 5.0
+  adv_estimator: grpo
+  # M2 base advantage statistics: trajectory (legacy) or turn (canonical turns).
+  grpo_normalization_scope: trajectory
+  use_kl_in_reward: false
+
+  thinking_correspondence:
+    enabled: true
+    consumer: mechanism2
+    similarity_threshold: 0.70
+    source_rollout_cap: 1
+    top_k: 3
+    aggregation_temperature: 0.10
+    # Mix probabilities across sources; log_mean selects the previous formula.
+    aggregation_mode: probability_mixture
+    # The diagonal/cross blend remains (1-alpha)*log_p_diag + alpha*log_p_cross.
+    alpha_max: 0.80
+    diagnostics:
+      enabled: true
+      region_breakdown: true
+      sign_epsilon: 0.0001
+      # Shared by ALFWorld, WebShop and Search-QA. Local only; no extra model calls.
+      retrospective:
+        enabled: true
+        directory: outputs/retrospective
+        sample_interval: 10
+        sample_turns: 8
+        sample_tokens: 512
+        context_tokens: 4096
+        # Cumulative cap on turns+samples per invocation; scalar metrics continue.
+        max_detail_mb: 1024
+    # Independent Teacher budget; null explicitly restores the Student rollout budget.
+    teacher_max_response_length: 2048
+    fuse_teacher_forcing: true
+    compute_action_matrix: false
+    action_filter:
+      enabled: false
+      similarity_threshold: 0.80
+    skills_dir: skills/alfworld
+    skill_all: false
+    encoder:
+      model_path: null
+      revision: c54f2e6e80b2d7b7de06f51cec4959f6b3e03418
+      expected_model_sha256: 0437e45c94563b09e13cb7a64478fc406947a93cb34a7e05870fc8dcd48e23fd
+      pooling: last_token
+      padding_side: left
+      truncation_side: right
+      max_length: 4096
+      attention_implementation: sdpa
+      device: auto
+      batch_size: 4
+      dtype: auto
+      # actor_all shards across existing actor workers; requires offload below.
+      execution: actor_rank0
+      offload_after_encode: true
+    alignment:
+      beta: 5.0
+      coef: 0.01
+
+  mechanism2:
+    enabled: true
+    profile_temperature: 0.10
+    # Adjacent profile distance: jsd (legacy), entropy, or cosine.
+    profile_distance: jsd
+    segmentation_quantile: 0.80
+    segmentation_threshold_min: 0.01
+    segmentation_threshold_max: 0.10
+    min_segment_turns: 2
+    max_segment_turns: 8
+    credit_temperature: 1.0
+    mixing_coefficient: 0.50
+    density_upper_bound: 4.0
+    # bounded preserves the hierarchy and token budget with density in 1 +/- band.
+    weighting_mode: legacy
+    multiplier_band: 0.2
+
+actor_rollout_ref:
+  rollout:
+    # Opt-in complete text/token traces, including backend stopping reasons.
+    generation_trace_dir: null
+    # vLLM 0.8.3 cascade attention corrupts long-shared-prefix batches in our
+    # paired reproducer. Apply the same safe path to Student/Teacher/validation.
+    engine_kwargs:
+      vllm:
+        disable_cascade_attn: true
+    # Covers the largest standard prompt (4096) plus Teacher output (2048).
+    max_model_len: 6144
+  actor:
+    loss_agg_mode: token-mean
+
+env:
+  rollout:
+    n: 8
+
+# Periodic saving starts here; an enabled final save is always retained.
+trainer:
+  resume_mode: auto
+  save_start_step: 0

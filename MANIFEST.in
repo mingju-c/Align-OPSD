@@ -1,0 +1,6 @@
+include LICENSE Notice.txt README.md requirements.txt requirements-webshop.txt .env.example
+recursive-include verl *.yaml version
+recursive-include agent_system *.yaml *.yml *.json *.twl2 *.pddl *.txt *.html *.css *.js *.png *.jpg *.jpeg
+recursive-include examples *.sh *.md
+recursive-include skills *.md *.json *.txt
+recursive-include scripts *.py *.sh
