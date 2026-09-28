@@ -1,54 +1,44 @@
-# AlignOPSD
+# Beyond Timestamps: Decision-Aligned On-Policy Distillation for Long-Horizon Agents
 
-Code for correspondence-driven credit assignment in agentic reinforcement learning. The implementation keeps the internal `BeyondTimestamps` names for configuration/checkpoint compatibility.
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-This release focuses on **ALFWorld, WebShop and Search**, with 3B/7B policies and M1-only ablations. Model weights, benchmark data, checkpoints, logs, unrelated baseline launchers, and upstream integration tests are excluded.
+## Overview
 
-| Directory | Contents |
-| --- | --- |
-| `examples/` | Main/M1 launchers, data preparation and retrieval |
-| `verl/` | Method implementation and shared distributed training runtime |
-| `agent_system/` | The three benchmark integrations |
-| `skills/` | Skill mappings and only the texts they reference |
-| `gigpo/` | Shared advantage helper imported by the PPO runtime |
-| `scripts/` | Path setup, preflight/release checks and checkpoint merging |
-| `tests/` | Method and launcher regression tests |
+**AlignOPSD** uses teacher–student correspondence to rectify supervision and assign credit in agentic reinforcement learning. It aligns student turns with relevant teacher contexts across sibling rollouts, then uses the rectified evidence to distribute outcome credit across decision spans and individual turns for policy optimization.
 
-Shared PPO, RLSD and SDAR code remains where imported by the method. Unused launch recipes, visual card-game assets, THOR scene generators, generated skill memories and old documentation are omitted.
+- **Decision-Aligned Supervision Rectification:** match teacher contexts by thinking-state similarity and re-score the same student response with confidence-guided mixing.
+- **Semi-Markov Hierarchical Credit Assignment:** identify variable-length decision spans from correspondence shifts and allocate outcome credit across spans and turns.
+
+The repository supports **ALFWorld, WebShop and Search** with **Qwen2.5-3B/7B-Instruct**.
+
+<p align="center">
+  <a href="assets/alignopsd-method.png">
+    <img src="assets/alignopsd-method.png" width="100%" alt="AlignOPSD framework: decision-aligned supervision rectification and semi-Markov hierarchical credit assignment">
+  </a>
+</p>
+
+<p align="center"><a href="assets/alignopsd-method.svg">Vector figure (SVG)</a></p>
 
 ## Installation
 
-Run installation commands from the checkout root. Install this checkout in editable mode. Training requires Linux and NVIDIA GPUs.
-
-For **ALFWorld/Search**:
+Requires Linux and NVIDIA GPUs.
 
 ```bash
+git clone https://github.com/mingju-c/Align-OPSD.git
+cd Align-OPSD
 conda create -n alignopsd python=3.12.14 pip ninja packaging -y
 conda activate alignopsd
 python -m pip install -r requirements.txt
 python -m pip install flash-attn==2.7.4.post1 --no-build-isolation
 ```
 
-This profile pins PyTorch 2.8.0, vLLM 0.11.0, Transformers 4.57.3, Ray 2.50.0 and TensorDict 0.10.0. Shared dependencies live in `setup.py`.
+This environment is for **ALFWorld/Search**. **WebShop** requires a separate Python 3.10 environment; see the [installation guide](docs/training.md#installation).
 
-For **WebShop**, use a separate environment:
+## Quick Start
 
-```bash
-conda create -n alignopsd-webshop python=3.10 pip ninja packaging -y
-conda activate alignopsd-webshop
-(
-  cd agent_system/environments/env_package/webshop/webshop
-  bash setup.sh -d small
-)
-python -m pip install -r requirements-webshop.txt
-python -m pip install flash-attn==2.7.4.post1 --no-build-isolation
-```
+### Prepare models and data
 
-WebShop setup installs Java 11, Pyserini, spaCy models and the 1,000-product assets/index. Activate this environment so its Java executable is on `PATH`; an existing asset installation can be selected with `WEBSHOP_ASSET_ROOT`.
-
-## Assets
-
-Download the frozen encoder before training; the method checks its revision and weight checksum:
+Download the encoder at the required revision and a policy model:
 
 ```bash
 hf download Qwen/Qwen3-Embedding-0.6B \
@@ -58,92 +48,83 @@ hf download Qwen/Qwen2.5-3B-Instruct --local-dir ./models/Qwen2.5-3B-Instruct
 export MODEL_PATH=./models/Qwen2.5-3B-Instruct
 ```
 
-For 7B, use `Qwen/Qwen2.5-7B-Instruct` instead. Without `MODEL_PATH`, each launcher uses its corresponding Hugging Face model ID.
+Prepare the benchmark assets using the [data setup instructions](docs/training.md#assets). Search also requires a running retrieval service. Optional paths and settings are listed in [`.env.example`](.env.example); `.env` is not loaded automatically.
 
-**ALFWorld**:
+### Train
 
-```bash
-export ALFWORLD_DATA="$PWD/data/alfworld"
-alfworld-download -f
-```
+Choose the model size and run the launcher for your prepared benchmark.
 
-ALFWorld/WebShop placeholder Parquet files are generated automatically in separate task directories.
-
-**Search** (Search-R1 NQ/HotpotQA):
+**Qwen2.5-3B-Instruct**:
 
 ```bash
-python -m examples.data_preprocess.preprocess_search_r1_dataset \
-  --local_dir ./data/searchR1_processed_direct
-python examples/search/searchr1_download.py --local_dir ./data/searchR1
-cat ./data/searchR1/part_aa ./data/searchR1/part_ab > ./data/searchR1/e5_Flat.index
-gzip -dk ./data/searchR1/wiki-18.jsonl.gz
-```
-
-Start the retrieval service in an environment containing PyTorch, Transformers, Datasets, FastAPI, Uvicorn and a CUDA-compatible FAISS build:
-
-```bash
-bash examples/search/retriever/retrieval_launch.sh
-```
-
-The training data directory must contain both `train.parquet` and `test.parquet`. `SEARCH_INDEX_DIR`, `RETRIEVER_MODEL_PATH` and `SEARCH_PORT` configure the retrieval server. `FAISS_GPU=false` places the index on CPU; the dense encoder still requires CUDA.
-
-## Training
-
-```bash
+export MODEL_PATH=./models/Qwen2.5-3B-Instruct
+# ALFWorld
 bash examples/beyond_timestamps_trainer/run_alfworld_3b.sh
+# WebShop (use its separate environment)
 bash examples/beyond_timestamps_trainer/run_webshop_3b.sh
+# Search
 bash examples/beyond_timestamps_trainer/run_search_3b.sh
 ```
 
-Replace `3b` with `7b` for larger policies. M1-only launchers are in `examples/thinking_correspondence_trainer/`.
-
-Each launcher defines its model size, method parameters and training schedule directly. See [configuration defaults and the ALFWorld step-145 schedule](examples/beyond_timestamps_trainer/CONFIGS.md).
-
-M1-only experiment names include the model size, and these launchers start fresh by default. To resume a saved run, select its checkpoint directory and pass `trainer.resume_mode=auto` explicitly.
-
-The optional first argument of a standard launcher selects the engine (`vllm`). Remaining arguments are Hydra overrides and take precedence. For example:
+**Qwen2.5-7B-Instruct**:
 
 ```bash
-NUM_GPUS=4 bash examples/beyond_timestamps_trainer/run_search_3b.sh vllm \
-  data.train_batch_size=4 env.rollout.n=2 \
-  actor_rollout_ref.actor.ppo_mini_batch_size=8 \
-  actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
-  actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
-  actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
-  trainer.total_training_steps=2 trainer.test_freq=-1 \
-  trainer.save_freq=-1 trainer.val_before_train=false trainer.resume_mode=disable \
-  trainer.logger='[console]' trainer.experiment_name=smoke
+hf download Qwen/Qwen2.5-7B-Instruct --local-dir ./models/Qwen2.5-7B-Instruct
+export MODEL_PATH=./models/Qwen2.5-7B-Instruct
+# ALFWorld
+bash examples/beyond_timestamps_trainer/run_alfworld_7b.sh
+# WebShop (use its separate environment)
+bash examples/beyond_timestamps_trainer/run_webshop_7b.sh
+# Search
+bash examples/beyond_timestamps_trainer/run_search_7b.sh
 ```
 
-Batch sizes, tensor parallelism and memory settings must fit the hardware. Search 3B defaults to four GPUs; several other profiles use eight. WebShop 3B targets 80 GB GPUs.
+Adjust GPU counts and batch sizes for your hardware: Search 3B defaults to four GPUs, several profiles use eight, and WebShop 3B targets 80 GB GPUs. See [configuration defaults](examples/beyond_timestamps_trainer/CONFIGS.md) and the [training guide](docs/training.md#training) for overrides, checkpoint resumption and a short training check.
 
-| Variable | Default |
-| --- | --- |
-| `DATA_ROOT` | `<checkout>/data` |
-| `MODEL_PATH` | Launcher-specific Qwen2.5-3B/7B-Instruct model ID |
-| `THINKING_ENCODER_PATH` | `<checkout>/models/Qwen3-Embedding-0.6B` |
-| `SEARCH_DATA_DIR` | `<DATA_ROOT>/searchR1_processed_direct` |
-| `SEARCH_URL` | `http://127.0.0.1:8000/retrieve` |
-| `ALFWORLD_DATA` | `<DATA_ROOT>/alfworld` |
-| `WEBSHOP_ASSET_ROOT` | Bundled WebShop directory |
-| `WANDB_MODE` | `offline` |
-
-Launchers resolve relative paths from the checkout root and also work when invoked elsewhere. `.env.example` lists optional settings; `.env` is not loaded automatically. Use interactive W&B login for online logging.
-
-## Validation
+### Validate configuration
 
 ```bash
 python scripts/check_training.py --task search --model-size 3b --config-only
-# --task also accepts alfworld/webshop; --model-size accepts 3b/7b.
-python scripts/check_release.py
-python -m pip install pytest
-PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider tests
 ```
 
-Omit `--config-only` to check GPU visibility, installed dependencies, encoder files, cached policy configuration/tokenizer, benchmark assets and the retrieval service. Preflight does not load full model weights or run an optimizer step.
+Supported tasks: `alfworld`, `webshop`, `search`; model sizes: `3b`, `7b`. See [validation](docs/training.md#validation) for environment checks and regression tests.
 
-The regression suite covers the method and launcher configuration. Prepare the assets and run the short training command above on the target GPU machine to check model loading and optimizer execution.
+## Results
+
+Main results on **ALFWorld, Search-QA and WebShop** with Qwen2.5-3B/7B-Instruct. Metrics are ALFWorld success rate, Search-QA accuracy, and WebShop Score/Acc (%). Click the table to view the full-resolution image.
+
+<p align="center">
+  <a href="assets/alignopsd-main-results.png">
+    <img src="assets/alignopsd-main-results.png" width="100%" alt="Table 1: Main results on ALFWorld, Search-QA and WebShop for Qwen2.5-3B-Instruct and Qwen2.5-7B-Instruct, including the table caption">
+  </a>
+</p>
+
+## Repository Structure
+
+```text
+Align-OPSD/
+├── examples/       # Training launchers, data preparation and retrieval
+├── verl/           # Method implementation and distributed training
+├── agent_system/   # Benchmark integrations
+├── skills/         # Skill mappings and texts
+├── gigpo/          # Shared advantage helper
+├── scripts/        # Preflight, release checks and checkpoint utilities
+├── tests/          # Method and launcher regression tests
+├── assets/         # Method figure and main results
+└── docs/           # Detailed training guide
+```
+
+Internal `BeyondTimestamps` names are retained for configuration/checkpoint compatibility. Model weights, benchmark data and training outputs are not bundled.
+
+## Acknowledgments
+
+This work builds upon and adapts code from:
+
+- [**SDAR**](https://github.com/ZJU-REAL/SDAR) — self-distilled agentic reinforcement learning framework
+- [**veRL**](https://github.com/volcengine/verl) — distributed reinforcement learning framework for large language models
+
+We sincerely thank the contributors of these projects for their work in advancing agentic reinforcement learning.
 
 ## License
 
-Built on SDAR, verl-agent/GiGPO, veRL, ALFWorld, WebShop and Search-R1. Original copyright headers and bundled licenses are retained; see `LICENSE` and `Notice.txt`.
+This project is licensed under [Apache 2.0](LICENSE); original copyright headers and bundled licenses are retained. See [Notice.txt](Notice.txt).
